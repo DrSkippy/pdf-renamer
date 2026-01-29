@@ -1,0 +1,21 @@
+[project]
+name = "2026-01-26-pdf-titles"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Scott Hendrickson",email = "scott@drskippy.net"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pypdf (>=6.6.2,<7.0.0)",
+    "cryptography (>=46.0.3,<47.0.0)",
+    "dateparser (>=1.2.2,<2.0.0)",
+    "ollama (>=0.6.1,<0.7.0)",
+    "tqdm (>=4.67.1,<5.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
