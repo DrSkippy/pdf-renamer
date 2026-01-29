@@ -4,10 +4,10 @@ from pathlib import Path
 from pypdf import PdfReader
 import re
 import json
-from llms.extractors import summarize_text, llm_title, llm_authors
+from llms.extractors import OllamaExtractors
 
 MIN_LINE_CHAR_THRESHOLD = 5  # min title/author/date line size
-MIN_CONTENT_CHARS = 5000   # min characters to be considered the first page of the content
+MIN_CONTENT_LINES = 66*8    # min characters to be considered the first page of the content
 MAX_LINES_FOR_TITLE_AND_AUTHORS = 16
 
 def clean_text(raw_text_from_pdf):
@@ -34,11 +34,11 @@ def clean_text(raw_text_from_pdf):
             # No titles, authors or date smaller than threshold
             result.append(tmp)
         else:
-            logging.info(f"Skipping line -- too short {len(tmp)} < {MIN_LINE_CHAR_THRESHOLD} chars")
+            logging.info(f"Skipping line-too short {len(tmp)} < {MIN_LINE_CHAR_THRESHOLD} chars")
     return result
 
 
-def likely_title(raw_text_fragment_from_pdf):
+def likely_title(raw_text_fragment_from_pdf, extractor):
     """
     Extracts likely title, authors, and date from raw text fragments of a PDF.
 
@@ -69,8 +69,8 @@ def likely_title(raw_text_fragment_from_pdf):
                 date = {"date": str(dates[0]), "date_line": text_line.strip() }
         else:
             title_accum.append(text_line)
-    title = llm_title(title_accum)
-    authors = llm_authors(title_accum)
+    title = extractor.llm_title(title_accum)
+    authors = extractor.llm_authors(title_accum)
     return title, authors, date
 
 def extract_from_pdf(pdf_path: Path):
@@ -92,19 +92,20 @@ def extract_from_pdf(pdf_path: Path):
     logging.info(f"Extracting from pdf {pdf_path}...")
     pdf_text = []
     reader = PdfReader(str(pdf_path))
+    extractor = OllamaExtractors()
 
     page_text = reader.pages[0].extract_text()
     pdf_text.extend(clean_text(page_text))
 
     page_index = 1
-    while len(page_text) < MIN_CONTENT_CHARS:
-        logging.warning(f"First page text too short ({len(first_page_text)} chars), trying another page")
-        page_text = reader.pages[page_text].extract_text()
+    while len(pdf_text) < MIN_CONTENT_LINES and page_index < len(reader.pages):
+        logging.warning(f"First {page_index+1} page(s) of text too short ({len(pdf_text)} lines), adding page")
+        page_text = reader.pages[page_index].extract_text()
         pdf_text.extend(clean_text(page_text))
         page_index += 1
 
-    cont_pages_text = "\n".join(pages_text)
-    summary = summarize_text(cont_pages_text)
-    title, authors, date = likely_title(page_text)
+    cont_pdf_text = "\n".join(pdf_text)
+    summary = extractor.summarize_text(cont_pdf_text)
+    title, authors, date = likely_title(pdf_text, extractor)
     return title , authors, date, summary
 
