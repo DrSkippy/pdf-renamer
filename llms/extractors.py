@@ -5,20 +5,22 @@ import ollama
 
 class OllamaExtractors:
     TITLE_MODEL = "gpt-oss:latest"
-    TITLE_MODEL_PROMPT = ("You are a helpful assistant that extracts information from text. The user will "
-                          "provide you with a text document that likely contains the title of the document "
+    TITLE_MODEL_PROMPT = ("You are a helpful assistant that extracts specific information from text. The user will "
+                          "provide you with a text document that contains the title of the document "
                           "in the first few lines of text. Your task is to extract the most likely line or "
-                          "lines containing the full title of the paper. Find the most like line or lines "
-                          "containing the title. Return the result in json with the line number of the first "
-                          "line of the title, and the full title fo the document.")
+                          "lines containing the full title of the document. Return the result in json with the "
+                          "line number of the first line of the title, and the full title of the document.")
     SUMMARY_MODEL = "gpt-oss:latest"
     SUMMARY_MODEL_PROMPT = ("You are a helpful assistant that extracts information from text. The user will "
                             "provide you with a text document, and your task is to create a 1-2 paragraph "
                             "abstract. Format the result as json.")
     AUTHORS_MODEL = "gpt-oss:latest"
-    AUTHORS_MODEL_PROMPT = ("You are a helpful assistant that extracts information from text. The user will "
+    AUTHORS_MODEL_PROMPT = ("You are a helpful assistant that extracts specific information from text. The user will "
                             "provide you with a text document, and your task is to extract the author(s) of "
-                            "the document. Format the result as json.")
+                            "the document. Find the most likely line or lines "
+                            "containing the article authors. Return the result in json with the line number of "
+                            "the first line of the authors, and the authors string and a list with each author "
+                            "Return the result as json.")
     HOST = "http://lambda-dual.home.lan:11434"
 
     def __init__(self):
