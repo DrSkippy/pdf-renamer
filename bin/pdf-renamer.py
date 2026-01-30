@@ -19,7 +19,7 @@ if __name__ == "__main__":
         title, authors, date, summary = extract_from_pdf(filename)
         if title["title"] is None or len(title["title"]) == 0:
             logging.info("Falling back to file title.")
-            title["title"] = make_filename_safe(filename[:-4])
+            title["title"] = filename.stem
         clean_filename_stem = make_filename_safe(title["title"])
         record = {"title": title,
                   "authors": authors,
