@@ -63,10 +63,13 @@ class OllamaExtractors:
     def json_loads_with_stringify(self, x: str) -> str:
         """Extract a JSON object string from an LLM response.
 
-        Handles markdown code fences, prose wrappers, and other common LLM
-        response formats. Returns the raw JSON string for Pydantic to parse.
+        Handles chain-of-thought thinking blocks, markdown code fences, prose
+        wrappers, and other common LLM response formats. Returns the raw JSON
+        string for Pydantic to parse.
         """
         logging.debug(f"Raw LLM response: {x}")
+        # Strip chain-of-thought reasoning blocks emitted by thinking models (e.g. qwen3.5)
+        x = re.sub(r'<think>.*?</think>', '', x, flags=re.DOTALL).strip()
         match = re.search(r'\{[^{}]*\}', x, re.DOTALL)
         if match:
             return match.group(0)
@@ -109,6 +112,8 @@ class OllamaExtractors:
         logging.info(f"Summarizing with model {self.SUMMARY_MODEL}...")
         response = self.client.chat(
             model=self.SUMMARY_MODEL,
+            format=Summary.model_json_schema(),
+            think=False,
             messages=[
                 {"role": "system", "content": self.SUMMARY_MODEL_PROMPT},
                 {"role": "user", "content": full_text},
@@ -132,6 +137,8 @@ class OllamaExtractors:
         full_text = "\n".join(x)
         response = self.client.chat(
             model=self.AUTHORS_MODEL,
+            format=Authors.model_json_schema(),
+            think=False,
             messages=[
                 {"role": "system", "content": self.AUTHORS_MODEL_PROMPT},
                 {"role": "user", "content": full_text},
@@ -155,6 +162,8 @@ class OllamaExtractors:
         full_text = "\n".join(x)
         response = self.client.chat(
             model=self.TITLE_MODEL,
+            format=Title.model_json_schema(),
+            think=False,
             messages=[
                 {"role": "system", "content": self.TITLE_MODEL_PROMPT},
                 {"role": "user", "content": full_text},

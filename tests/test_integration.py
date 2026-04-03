@@ -33,6 +33,10 @@ SAMPLES = Path(__file__).parent.parent / "samples"
             "song-slides.pdf",
             ["spectral algorithms", "latent tree"],
         ),
+        (
+            "autoscalingcloudinfrwithrl.pdf",
+            ["auto-scaling", "reinforcement learning"],
+        ),
     ],
 )
 def test_title_extraction(filename: str, required_terms: list[str]) -> None:

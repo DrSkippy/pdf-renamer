@@ -62,6 +62,34 @@ class TestOllamaExtractors:
         assert result == '{"title": "Extracted"}'
 
     @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_strips_think_block(self, mock_client_class):
+        """Test that <think>...</think> reasoning blocks are stripped before JSON extraction."""
+        mock_client_class.return_value = Mock()
+        extractor = OllamaExtractors()
+        response = '<think>\nThe title is clearly "Spectral Learning".\n</think>\n{"title": "Spectral Learning"}'
+        result = extractor.json_loads_with_stringify(response)
+        assert result == '{"title": "Spectral Learning"}'
+
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_think_block_only(self, mock_client_class):
+        """Test that a response with only a <think> block and no JSON returns empty string."""
+        mock_client_class.return_value = Mock()
+        extractor = OllamaExtractors()
+        response = "<think>\nSpectral Learning Part I\n</think>"
+        result = extractor.json_loads_with_stringify(response)
+        assert result == ""
+
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_think_block_with_json_inside(self, mock_client_class):
+        """Test that JSON inside a <think> block is ignored; only post-think JSON is returned."""
+        mock_client_class.return_value = Mock()
+        extractor = OllamaExtractors()
+        # JSON inside think block should be discarded; real JSON follows
+        response = '<think>Maybe {"title": "wrong"}</think>{"title": "correct"}'
+        result = extractor.json_loads_with_stringify(response)
+        assert result == '{"title": "correct"}'
+
+    @patch("llms.extractors.ollama.Client")
     def test_json_loads_with_stringify_preserves_escaped_quotes(self, mock_client_class):
         """Test that valid JSON escaped quotes are preserved (not mangled)."""
         mock_client_class.return_value = Mock()
@@ -87,6 +115,8 @@ class TestOllamaExtractors:
         mock_client.chat.assert_called_once()
         call_args = mock_client.chat.call_args[1]
         assert call_args["model"] == OllamaExtractors.SUMMARY_MODEL
+        assert call_args["format"] == Summary.model_json_schema()
+        assert call_args["think"] is False
         assert call_args["messages"][0]["role"] == "system"
         assert call_args["messages"][1]["content"] == "Full text of the document"
         assert result == {"summary": "This is a test summary."}
@@ -121,6 +151,8 @@ class TestOllamaExtractors:
 
         call_args = mock_client.chat.call_args[1]
         assert call_args["model"] == OllamaExtractors.AUTHORS_MODEL
+        assert call_args["format"] == Authors.model_json_schema()
+        assert call_args["think"] is False
         # Input joined with newlines (preserves line structure)
         assert "\n" in call_args["messages"][1]["content"]
 
@@ -156,6 +188,8 @@ class TestOllamaExtractors:
 
         call_args = mock_client.chat.call_args[1]
         assert call_args["model"] == OllamaExtractors.TITLE_MODEL
+        assert call_args["format"] == Title.model_json_schema()
+        assert call_args["think"] is False
         # Input joined with newlines (preserves line structure)
         assert "\n" in call_args["messages"][1]["content"]
 
