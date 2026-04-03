@@ -1,15 +1,15 @@
-import json
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from llms.extractors import OllamaExtractors
+from unittest.mock import Mock, patch
+from pydantic import ValidationError
+from llms.extractors import OllamaExtractors, Title, Authors, Summary
 
 
 class TestOllamaExtractors:
     """Test suite for OllamaExtractors class"""
 
-    @patch('llms.extractors.ollama.Client')
+    @patch("llms.extractors.ollama.Client")
     def test_init_creates_client(self, mock_client_class):
-        """Test that __init__ creates an ollama client with correct host"""
+        """Test that __init__ creates an ollama client with the configured host."""
         mock_client_instance = Mock()
         mock_client_class.return_value = mock_client_instance
 
@@ -18,251 +18,262 @@ class TestOllamaExtractors:
         mock_client_class.assert_called_once_with(host=OllamaExtractors.HOST)
         assert extractor.client == mock_client_instance
 
-    @patch('llms.extractors.ollama.Client')
+    @patch("llms.extractors.ollama.Client")
     def test_json_loads_with_stringify_basic(self, mock_client_class):
-        """Test json_loads_with_stringify with basic JSON"""
+        """Test that a plain JSON string is returned unchanged."""
         mock_client_class.return_value = Mock()
         extractor = OllamaExtractors()
         json_str = '{"title": "Test Document"}'
         result = extractor.json_loads_with_stringify(json_str)
-        assert result == {"title": "Test Document"}
+        assert result == '{"title": "Test Document"}'
 
-    @patch('llms.extractors.ollama.Client')
-    def test_json_loads_with_stringify_with_whitespace(self, mock_client_class):
-        """Test json_loads_with_stringify strips whitespace"""
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_strips_whitespace(self, mock_client_class):
+        """Test that surrounding whitespace is ignored."""
         mock_client_class.return_value = Mock()
         extractor = OllamaExtractors()
-        json_str = '  {"title": "Test"}  '
-        result = extractor.json_loads_with_stringify(json_str)
-        assert result == {"title": "Test"}
+        result = extractor.json_loads_with_stringify('  {"title": "Test"}  ')
+        assert result == '{"title": "Test"}'
 
-    @patch('llms.extractors.ollama.Client')
-    def test_json_loads_with_stringify_with_backticks(self, mock_client_class):
-        """Test json_loads_with_stringify removes backticks"""
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_markdown_fenced(self, mock_client_class):
+        """Test that JSON inside a markdown code fence is extracted."""
         mock_client_class.return_value = Mock()
         extractor = OllamaExtractors()
-        json_str = '```{"title": "Test"}```'
-        result = extractor.json_loads_with_stringify(json_str)
-        assert result == {"title": "Test"}
+        result = extractor.json_loads_with_stringify('```json\n{"title": "Test"}\n```')
+        assert result == '{"title": "Test"}'
 
-    @patch('llms.extractors.ollama.Client')
-    def test_json_loads_with_stringify_with_json_prefix(self, mock_client_class):
-        """Test json_loads_with_stringify removes 'json' prefix"""
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_json_prefix(self, mock_client_class):
+        """Test that JSON embedded after a json prefix is extracted."""
         mock_client_class.return_value = Mock()
         extractor = OllamaExtractors()
-        json_str = 'json{"title": "Test"}'
-        result = extractor.json_loads_with_stringify(json_str)
-        assert result == {"title": "Test"}
+        result = extractor.json_loads_with_stringify('json{"title": "Test"}')
+        assert result == '{"title": "Test"}'
 
-    @patch('llms.extractors.ollama.Client')
-    def test_json_loads_with_stringify_with_escaped_quotes(self, mock_client_class):
-        """Test json_loads_with_stringify handles escaped quotes"""
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_json_in_prose(self, mock_client_class):
+        """Test that JSON embedded in surrounding prose is extracted."""
+        mock_client_class.return_value = Mock()
+        extractor = OllamaExtractors()
+        result = extractor.json_loads_with_stringify(
+            'Here is the result: {"title": "Extracted"} as requested.'
+        )
+        assert result == '{"title": "Extracted"}'
+
+    @patch("llms.extractors.ollama.Client")
+    def test_json_loads_with_stringify_preserves_escaped_quotes(self, mock_client_class):
+        """Test that valid JSON escaped quotes are preserved (not mangled)."""
         mock_client_class.return_value = Mock()
         extractor = OllamaExtractors()
         json_str = '{"title": "Test \\"quoted\\" text"}'
         result = extractor.json_loads_with_stringify(json_str)
-        assert result == {"title": "Test 'quoted' text"}
+        # The JSON should be parseable by Pydantic as-is
+        t = Title.model_validate_json(result)
+        assert "quoted" in t.title
 
-    @patch('llms.extractors.ollama.Client')
-    def test_json_loads_with_stringify_with_backslashes(self, mock_client_class):
-        """Test json_loads_with_stringify handles backslashes"""
-        mock_client_class.return_value = Mock()
-        extractor = OllamaExtractors()
-        json_str = '{"path": "C:\\\\Users\\\\test"}'
-        result = extractor.json_loads_with_stringify(json_str)
-        # After escaping, backslashes should be doubled
-        assert "path" in result
-
-    @patch('llms.extractors.ollama.Client')
+    @patch("llms.extractors.ollama.Client")
     def test_summarize_text(self, mock_client_class):
-        """Test summarize_text method"""
+        """Test summarize_text returns a dict with 'summary' key."""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-
-        # Mock the response from ollama
-        mock_response = {
-            "message": {
-                "content": '{"abstract": "This is a test summary of the document."}'
-            }
+        mock_client.chat.return_value = {
+            "message": {"content": '{"summary": "This is a test summary."}'}
         }
-        mock_client.chat.return_value = mock_response
 
         extractor = OllamaExtractors()
         result = extractor.summarize_text("Full text of the document")
 
-        # Verify the client was called with correct parameters
         mock_client.chat.assert_called_once()
-        call_args = mock_client.chat.call_args
-        assert call_args[1]['model'] == OllamaExtractors.SUMMARY_MODEL
-        assert len(call_args[1]['messages']) == 2
-        assert call_args[1]['messages'][0]['role'] == 'system'
-        assert call_args[1]['messages'][1]['role'] == 'user'
-        assert call_args[1]['messages'][1]['content'] == "Full text of the document"
+        call_args = mock_client.chat.call_args[1]
+        assert call_args["model"] == OllamaExtractors.SUMMARY_MODEL
+        assert call_args["messages"][0]["role"] == "system"
+        assert call_args["messages"][1]["content"] == "Full text of the document"
+        assert result == {"summary": "This is a test summary."}
 
-        # Verify the result
-        assert result == {"abstract": "This is a test summary of the document."}
-
-    @patch('llms.extractors.ollama.Client')
-    def test_llm_authors(self, mock_client_class):
-        """Test llm_authors method"""
+    @patch("llms.extractors.ollama.Client")
+    def test_summarize_text_validation_error_returns_empty(self, mock_client_class):
+        """Test summarize_text returns empty summary on malformed LLM response."""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.chat.return_value = {
+            "message": {"content": "not json at all"}
+        }
 
-        # Mock the response from ollama
-        mock_response = {
+        extractor = OllamaExtractors()
+        result = extractor.summarize_text("text")
+        assert result == {"summary": ""}
+
+    @patch("llms.extractors.ollama.Client")
+    def test_llm_authors(self, mock_client_class):
+        """Test llm_authors returns authors dict without line_number."""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.chat.return_value = {
             "message": {
-                "content": '{"line_number": 3, "line": "John Doe, Jane Smith", "authors": ["John Doe", "Jane Smith"]}'
+                "content": '{"authors": "John Doe, Jane Smith", "authors_list": ["John Doe", "Jane Smith"]}'
             }
         }
-        mock_client.chat.return_value = mock_response
 
         extractor = OllamaExtractors()
         text_lines = ["Title Line", "Date: 2024", "John Doe, Jane Smith", "Abstract..."]
         result = extractor.llm_authors(text_lines)
 
-        # Verify the client was called with correct parameters
-        mock_client.chat.assert_called_once()
-        call_args = mock_client.chat.call_args
-        assert call_args[1]['model'] == OllamaExtractors.AUTHORS_MODEL
-        assert len(call_args[1]['messages']) == 2
-        assert call_args[1]['messages'][0]['role'] == 'system'
-        assert call_args[1]['messages'][1]['role'] == 'user'
-        # Input is joined with newlines
-        assert "\n" in call_args[1]['messages'][1]['content']
+        call_args = mock_client.chat.call_args[1]
+        assert call_args["model"] == OllamaExtractors.AUTHORS_MODEL
+        # Input joined with newlines (preserves line structure)
+        assert "\n" in call_args["messages"][1]["content"]
 
-        # Verify the result
-        assert result['line_number'] == 3
-        assert result['authors'] == ["John Doe", "Jane Smith"]
+        assert result["authors"] == "John Doe, Jane Smith"
+        assert result["authors_list"] == ["John Doe", "Jane Smith"]
+        assert "line_number" not in result
 
-    @patch('llms.extractors.ollama.Client')
-    def test_llm_title(self, mock_client_class):
-        """Test llm_title method"""
+    @patch("llms.extractors.ollama.Client")
+    def test_llm_authors_validation_error_returns_empty(self, mock_client_class):
+        """Test llm_authors returns empty authors on malformed LLM response."""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.chat.return_value = {"message": {"content": "bad response"}}
 
-        # Mock the response from ollama
-        mock_response = {
+        extractor = OllamaExtractors()
+        result = extractor.llm_authors(["some lines"])
+        assert result == {"authors": "", "authors_list": []}
+
+    @patch("llms.extractors.ollama.Client")
+    def test_llm_title(self, mock_client_class):
+        """Test llm_title returns title dict without line_number."""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.chat.return_value = {
             "message": {
-                "content": '{"line_number": 1, "title": "Advanced Machine Learning Techniques"}'
+                "content": '{"title": "Advanced Machine Learning Techniques"}'
             }
         }
-        mock_client.chat.return_value = mock_response
 
         extractor = OllamaExtractors()
         text_lines = ["Advanced Machine Learning", "Techniques", "John Doe", "2024"]
         result = extractor.llm_title(text_lines)
 
-        # Verify the client was called with correct parameters
-        mock_client.chat.assert_called_once()
-        call_args = mock_client.chat.call_args
-        assert call_args[1]['model'] == OllamaExtractors.TITLE_MODEL
-        assert len(call_args[1]['messages']) == 2
-        assert call_args[1]['messages'][0]['role'] == 'system'
-        assert call_args[1]['messages'][1]['role'] == 'user'
-        # Input is joined with spaces
-        assert " " in call_args[1]['messages'][1]['content']
+        call_args = mock_client.chat.call_args[1]
+        assert call_args["model"] == OllamaExtractors.TITLE_MODEL
+        # Input joined with newlines (preserves line structure)
+        assert "\n" in call_args["messages"][1]["content"]
 
-        # Verify the result
-        assert result['line_number'] == 1
-        assert result['title'] == "Advanced Machine Learning Techniques"
+        assert result["title"] == "Advanced Machine Learning Techniques"
+        assert "line_number" not in result
 
-    @patch('llms.extractors.ollama.Client')
-    def test_summarize_text_with_markdown_response(self, mock_client_class):
-        """Test summarize_text handles markdown-wrapped JSON"""
+    @patch("llms.extractors.ollama.Client")
+    def test_llm_title_validation_error_returns_empty(self, mock_client_class):
+        """Test llm_title returns empty title on malformed LLM response."""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-
-        # Mock response with markdown code block
-        mock_response = {
-            "message": {
-                "content": '```json\n{"abstract": "Test abstract"}\n```'
-            }
-        }
-        mock_client.chat.return_value = mock_response
+        mock_client.chat.return_value = {"message": {"content": "bad response"}}
 
         extractor = OllamaExtractors()
-        result = extractor.summarize_text("Test text")
+        result = extractor.llm_title(["some lines"])
+        assert result == {"title": ""}
 
-        assert result == {"abstract": "Test abstract"}
-
-    @patch('llms.extractors.ollama.Client')
+    @patch("llms.extractors.ollama.Client")
     def test_methods_use_correct_models(self, mock_client_class):
-        """Test that each method uses the correct model"""
+        """Test that title/authors use TITLE/AUTHORS_MODEL, summary uses SUMMARY_MODEL."""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.chat.return_value = {
-            "message": {"content": '{"result": "test"}'}
+            "message": {"content": '{"summary": "s", "title": "t", "authors": "", "authors_list": []}'}
         }
 
         extractor = OllamaExtractors()
 
-        # Test summarize_text uses SUMMARY_MODEL
         extractor.summarize_text("text")
-        assert mock_client.chat.call_args[1]['model'] == OllamaExtractors.SUMMARY_MODEL
+        assert mock_client.chat.call_args[1]["model"] == OllamaExtractors.SUMMARY_MODEL
 
-        # Test llm_authors uses AUTHORS_MODEL
         extractor.llm_authors(["text"])
-        assert mock_client.chat.call_args[1]['model'] == OllamaExtractors.AUTHORS_MODEL
+        assert mock_client.chat.call_args[1]["model"] == OllamaExtractors.AUTHORS_MODEL
 
-        # Test llm_title uses TITLE_MODEL
         extractor.llm_title(["text"])
-        assert mock_client.chat.call_args[1]['model'] == OllamaExtractors.TITLE_MODEL
+        assert mock_client.chat.call_args[1]["model"] == OllamaExtractors.TITLE_MODEL
 
+    @patch("llms.extractors.ollama.Client")
+    def test_title_and_authors_use_different_model_than_summary(self, mock_client_class):
+        """TITLE_MODEL and AUTHORS_MODEL should differ from SUMMARY_MODEL."""
+        mock_client_class.return_value = Mock()
+        assert OllamaExtractors.TITLE_MODEL != OllamaExtractors.SUMMARY_MODEL
+        assert OllamaExtractors.AUTHORS_MODEL != OllamaExtractors.SUMMARY_MODEL
 
-class TestOllamaExtractorsEdgeCases:
-    """Test edge cases and error scenarios"""
+    @patch("llms.extractors.ollama.Client")
+    def test_ocr_model_differs_from_text_models(self, mock_client_class):
+        """OCR_MODEL should be distinct from all text-analysis models."""
+        mock_client_class.return_value = Mock()
+        assert OllamaExtractors.OCR_MODEL != OllamaExtractors.TITLE_MODEL
+        assert OllamaExtractors.OCR_MODEL != OllamaExtractors.AUTHORS_MODEL
+        assert OllamaExtractors.OCR_MODEL != OllamaExtractors.SUMMARY_MODEL
 
-    @patch('llms.extractors.ollama.Client')
-    def test_json_loads_with_stringify_invalid_json(self, mock_client_class):
-        """Test json_loads_with_stringify with invalid JSON raises error"""
+    @patch("llms.extractors.ollama.Client")
+    def test_ocr_page_images_single_image(self, mock_client_class):
+        """Test ocr_page_images calls OCR model with image bytes."""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.chat.return_value = {"message": {"content": "Extracted text from image"}}
+
+        extractor = OllamaExtractors()
+        mock_img = Mock()
+        mock_img.data = b"fake image bytes"
+        result = extractor.ocr_page_images([mock_img])
+
+        call_args = mock_client.chat.call_args[1]
+        assert call_args["model"] == OllamaExtractors.OCR_MODEL
+        assert b"fake image bytes" in call_args["messages"][0]["images"]
+        assert result == "Extracted text from image"
+
+    @patch("llms.extractors.ollama.Client")
+    def test_ocr_page_images_multiple_images(self, mock_client_class):
+        """Test ocr_page_images concatenates text from multiple images."""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.chat.side_effect = [
+            {"message": {"content": "First image text"}},
+            {"message": {"content": "Second image text"}},
+        ]
+
+        extractor = OllamaExtractors()
+        result = extractor.ocr_page_images([Mock(data=b"img1"), Mock(data=b"img2")])
+
+        assert mock_client.chat.call_count == 2
+        assert "First image text" in result
+        assert "Second image text" in result
+
+    @patch("llms.extractors.ollama.Client")
+    def test_ocr_page_images_empty_list(self, mock_client_class):
+        """Test ocr_page_images with no images returns empty string."""
         mock_client_class.return_value = Mock()
         extractor = OllamaExtractors()
-        invalid_json = '{invalid json}'
-        with pytest.raises(json.JSONDecodeError):
-            extractor.json_loads_with_stringify(invalid_json)
+        result = extractor.ocr_page_images([])
+        assert result == ""
 
-    @patch('llms.extractors.ollama.Client')
-    def test_empty_text_to_summarize(self, mock_client_class):
-        """Test summarize_text with empty string"""
-        mock_client = Mock()
-        mock_client_class.return_value = mock_client
-        mock_client.chat.return_value = {
-            "message": {"content": '{"abstract": ""}'}
-        }
-
-        extractor = OllamaExtractors()
-        result = extractor.summarize_text("")
-
-        assert result == {"abstract": ""}
-
-    @patch('llms.extractors.ollama.Client')
-    def test_empty_list_to_llm_authors(self, mock_client_class):
-        """Test llm_authors with empty list"""
-        mock_client = Mock()
-        mock_client_class.return_value = mock_client
-        mock_client.chat.return_value = {
-            "message": {"content": '{"authors": []}'}
-        }
-
-        extractor = OllamaExtractors()
-        result = extractor.llm_authors([])
-
-        # Should join empty list to empty string
-        call_args = mock_client.chat.call_args
-        assert call_args[1]['messages'][1]['content'] == ""
-
-    @patch('llms.extractors.ollama.Client')
+    @patch("llms.extractors.ollama.Client")
     def test_empty_list_to_llm_title(self, mock_client_class):
-        """Test llm_title with empty list"""
+        """Test llm_title with empty list sends empty string to LLM."""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.chat.return_value = {"message": {"content": '{"title": ""}'}}
+
+        extractor = OllamaExtractors()
+        extractor.llm_title([])
+
+        call_args = mock_client.chat.call_args[1]
+        assert call_args["messages"][1]["content"] == ""
+
+    @patch("llms.extractors.ollama.Client")
+    def test_empty_list_to_llm_authors(self, mock_client_class):
+        """Test llm_authors with empty list sends empty string to LLM."""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.chat.return_value = {
-            "message": {"content": '{"title": ""}'}
+            "message": {"content": '{"authors": "", "authors_list": []}'}
         }
 
         extractor = OllamaExtractors()
-        result = extractor.llm_title([])
+        extractor.llm_authors([])
 
-        # Should join empty list to empty string
-        call_args = mock_client.chat.call_args
-        assert call_args[1]['messages'][1]['content'] == ""
+        call_args = mock_client.chat.call_args[1]
+        assert call_args["messages"][1]["content"] == ""
