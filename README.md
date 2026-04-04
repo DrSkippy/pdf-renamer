@@ -56,7 +56,21 @@ poetry install
 
 ## Usage
 
-### Recommended: dry-run → review → apply
+### Direct rename (default)
+
+Runs LLM extraction and renames each PDF in place immediately.
+
+```bash
+poetry run python bin/pdf-renamer.py --pdf-root /path/to/pdfs/
+```
+
+Add `--json PATH` to also write a metadata JSON file per PDF to a directory:
+
+```bash
+poetry run python bin/pdf-renamer.py --pdf-root /path/to/pdfs/ --json ./output/
+```
+
+### Recommended for large collections: dry-run → review → apply
 
 ```bash
 # Step 1: run LLM extraction, preview proposed renames, save plan
@@ -73,14 +87,6 @@ poetry run python bin/pdf-renamer.py --dry-run --pdf-root /path/to/pdfs/
 poetry run python bin/pdf-renamer.py --apply
 ```
 
-### Full run (extract + write metadata JSON files)
-
-Runs LLM extraction and writes one `<title>.json` per PDF to `./output/`. Does not rename the source files.
-
-```bash
-poetry run python bin/pdf-renamer.py --pdf-root /path/to/pdfs/
-```
-
 ### All options
 
 ```
@@ -88,6 +94,8 @@ poetry run python bin/pdf-renamer.py --pdf-root /path/to/pdfs/
                       (default: ~/ownCloud/Documents/Articles and Papers/)
 --plan-file PATH      Rename plan JSON for --dry-run / --apply
                       (default: ./rename_plan.json)
+--json PATH           Write one metadata JSON file per PDF to this directory
+                      (created if absent; use with default rename mode)
 --log-path PATH       Log file location (default: process.log)
 --log-level LEVEL     DEBUG | INFO | WARNING | ERROR | CRITICAL (default: DEBUG)
 --dry-run             Run extraction, print proposed renames, save plan file
