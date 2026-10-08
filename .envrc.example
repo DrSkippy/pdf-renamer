@@ -1,0 +1,5 @@
+export PYTHONPATH=$(pwd)
+# OpenRouter: used for title, author, summary, and OCR (https://openrouter.ai/keys)
+export OPENROUTER_API_KEY=sk-or-v1-your-key-here
+# TypeSafe: only needed for --extractor typesafe
+export TYPESAFE_API_KEY=your-typesafe-key-here

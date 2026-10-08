@@ -1,18 +1,19 @@
 # pdf-renamer
 
-Rename PDF files using their actual document title, extracted from content by a local [Ollama](https://ollama.com/) LLM. Supports a dry-run / review / apply workflow so renames can be inspected and edited before any files are touched.
+Rename PDF files using their actual document title, extracted from content by an LLM via [OpenRouter](https://openrouter.ai/) (`openrouter/auto`), or optionally selected from the text with [TypeSafe](https://docs.typesafe.ai/). Supports a dry-run / review / apply workflow so renames can be inspected and edited before any files are touched.
 
 ## How it works
 
 ```
 PDF file
   └─ PyPDF: extract_text()
-       └─ if page is image-based → OCR via deepseek-ocr (Ollama)
+       └─ if page is image-based → OCR via openrouter/auto
   └─ clean_text(): filter lines < 2 chars
-  └─ likely_title(): send first 30 lines to qwen3.5 (Ollama)
+  └─ likely_title(): send first 30 lines to openrouter/auto
+       │   (--extractor typesafe: title and date selected from candidates instead)
        ├─ llm_title()   → {"title": "..."}
        └─ llm_authors() → {"authors": "...", "authors_list": [...]}
-  └─ summarize_text(): send first 4000 chars to gpt-oss (Ollama)
+  └─ summarize_text(): send first 4000 chars to openrouter/auto
        └─ {"summary": "..."}
   └─ make_filename_safe() → filesystem-safe stem
   └─ write metadata JSON or rename file
@@ -20,12 +21,18 @@ PDF file
 
 ### LLM model assignments
 
-| Task | Model | Reason |
-|------|-------|--------|
-| Title extraction | `qwen3.5:latest` | Lightweight general-purpose; handles multilingual academic text |
-| Author extraction | `qwen3.5:latest` | Same |
-| Summarization | `gpt-oss:latest` | Larger model suited to longer-form generation |
-| OCR fallback | `deepseek-ocr:latest` | Purpose-built for image/scanned document text extraction |
+Every task uses OpenRouter's auto router (`openrouter/auto`), which picks a model per
+prompt. Each task has its own constant in `llms/extractors.py` (`TITLE_MODEL`,
+`AUTHORS_MODEL`, `SUMMARY_MODEL`, `OCR_MODEL`) so any one can be pinned to a specific
+OpenRouter model. JSON tasks request a strict JSON-schema response and set
+`provider.require_parameters` so routing only reaches providers that support it.
+
+| Task | Model |
+|------|-------|
+| Title extraction | `openrouter/auto` (or TypeSafe `jev-latest` with `--extractor typesafe`) |
+| Author extraction | `openrouter/auto` |
+| Summarization | `openrouter/auto` |
+| OCR fallback | `openrouter/auto` |
 
 ### Text size limits
 
@@ -41,12 +48,12 @@ PDF file
 
 - Python 3.11+
 - [Poetry](https://python-poetry.org/)
-- A running [Ollama](https://ollama.com/) instance with the following models pulled:
-  - `qwen3.5:latest`
-  - `gpt-oss:latest`
-  - `deepseek-ocr:latest`
+- An [OpenRouter](https://openrouter.ai/) API key
+- A [TypeSafe](https://docs.typesafe.ai/) API key (only for `--extractor typesafe`)
 
-The Ollama host is configured in `llms/extractors.py` (`HOST = "http://192.168.1.90:11434"`).
+Credentials are read from the environment, loaded from `.envrc` by
+[direnv](https://direnv.net/). Copy `.envrc.example` to `.envrc`, fill in the keys,
+and run `direnv allow`.
 
 ## Setup
 
@@ -68,6 +75,15 @@ Add `--json PATH` to also write a metadata JSON file per PDF to a directory:
 
 ```bash
 poetry run python bin/pdf-renamer.py --pdf-root /path/to/pdfs/ --json ./output/
+```
+
+Add `--extractor typesafe` to select the title and publication date from candidate
+spans in the text with TypeSafe instead of having the LLM write them. The title is
+copied exactly from the PDF; low-confidence picks fall back to the original filename.
+Authors and summary still use OpenRouter.
+
+```bash
+poetry run python bin/pdf-renamer.py --dry-run --extractor typesafe --pdf-root /path/to/pdfs/
 ```
 
 ### Recommended for large collections: dry-run → review → apply
@@ -128,14 +144,15 @@ pdf-renamer/
 ├── bin/
 │   └── pdf-renamer.py      CLI entry point (dry-run / apply / full modes)
 ├── llms/
-│   └── extractors.py       Ollama client; title, author, summary, and OCR extraction
+│   └── extractors.py       OpenRouter client; title, author, summary, and OCR extraction
+│   └── typesafe_selectors.py  TypeSafe title/date selection (--extractor typesafe)
 ├── utils/
 │   ├── pdf_content.py      PDF reading pipeline, OCR fallback, text limits
 │   └── file_name.py        Filesystem-safe filename sanitization
 ├── tests/
-│   ├── test_extractors.py  Unit tests for OllamaExtractors
+│   ├── test_extractors.py  Unit tests for OpenRouterExtractors
 │   ├── test_pdf_content.py Unit tests for PDF processing pipeline
-│   └── test_integration.py Integration tests against sample PDFs (require live Ollama)
+│   └── test_integration.py Integration tests against sample PDFs (require OpenRouter key)
 ├── samples/                Sample PDFs used by integration tests
 ├── pyproject.toml
 └── poetry.lock
@@ -144,9 +161,9 @@ pdf-renamer/
 ## Running tests
 
 ```bash
-# Unit tests (no Ollama required)
+# Unit tests (no API keys required)
 poetry run pytest --cov=llms --cov=utils --cov-report=term-missing tests/test_extractors.py tests/test_pdf_content.py
 
-# Integration tests (require live Ollama with models pulled)
+# Integration tests (require OPENROUTER_API_KEY)
 poetry run pytest -m integration tests/test_integration.py -v
 ```

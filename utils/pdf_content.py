@@ -2,7 +2,9 @@ import logging
 from dateparser.search import search_dates
 from pathlib import Path
 from pypdf import PdfReader
-from llms.extractors import OllamaExtractors
+from typesafe_sdk import TypeSafeError
+from llms.extractors import OpenRouterExtractors
+from llms.typesafe_selectors import TypeSafeSelectors
 
 MIN_LINE_CHAR_THRESHOLD = 2    # min chars for a line to be kept
 MIN_CONTENT_LINES = 66 * 8    # target line count before stopping page reads
@@ -34,14 +36,14 @@ def clean_text(raw_text_from_pdf: str) -> list[str]:
     return result
 
 
-def _extract_page_text(page: object, extractor: OllamaExtractors) -> str:
+def _extract_page_text(page: object, extractor: OpenRouterExtractors) -> str:
     """Extract text from a single PDF page, falling back to OCR if needed.
 
     Tries PyPDF text extraction first. If the result is below MIN_OCR_TRIGGER_CHARS
     and the page contains embedded images, delegates to the OCR model.
 
     :param page: A pypdf PageObject
-    :param extractor: Configured OllamaExtractors instance
+    :param extractor: Configured OpenRouterExtractors instance
     :return: Extracted text string (may be empty if all methods fail)
     :rtype: str
     """
@@ -58,7 +60,9 @@ def _extract_page_text(page: object, extractor: OllamaExtractors) -> str:
 
 
 def likely_title(
-    raw_text_fragment_from_pdf: list[str], extractor: OllamaExtractors
+    raw_text_fragment_from_pdf: list[str],
+    extractor: OpenRouterExtractors,
+    selector: TypeSafeSelectors | None = None,
 ) -> tuple:
     """Extract title, authors, and date from the opening lines of a PDF.
 
@@ -66,16 +70,30 @@ def likely_title(
     and author extraction. Date detection runs as an independent scan over the
     same lines and does not affect which lines are sent to the LLM.
 
+    When a TypeSafe selector is given, the title and date are instead selected
+    from candidates found in those lines; authors still come from the LLM. If the
+    TypeSafe request fails, extraction falls back to the LLM path.
+
     :param raw_text_fragment_from_pdf: Cleaned text lines from the PDF
     :type raw_text_fragment_from_pdf: list[str]
-    :param extractor: Configured OllamaExtractors instance
-    :type extractor: OllamaExtractors
+    :param extractor: Configured OpenRouterExtractors instance
+    :type extractor: OpenRouterExtractors
+    :param selector: Optional TypeSafeSelectors instance for title and date
+    :type selector: TypeSafeSelectors | None
     :return: Tuple of (title_dict, authors_dict, date_dict or None)
     :rtype: tuple
     """
     logging.info("Starting extraction...")
     date = None
     title_lines = list(raw_text_fragment_from_pdf[:MAX_LINES_FOR_TITLE_AND_AUTHORS])
+
+    if selector is not None:
+        try:
+            title, date = selector.select_title_and_date(title_lines)
+            authors = extractor.llm_authors(title_lines)
+            return title, authors, date
+        except TypeSafeError as e:
+            logging.error(f"TypeSafe selection failed, falling back to LLM: {e}")
 
     # Date scan is independent — does not gate which lines go to the LLM
     for text_line in title_lines:
@@ -85,11 +103,13 @@ def likely_title(
             break
 
     title = extractor.llm_title(title_lines)
+    if selector is not None:
+        title["source"] = "llm-fallback"
     authors = extractor.llm_authors(title_lines)
     return title, authors, date
 
 
-def extract_from_pdf(pdf_path: Path) -> tuple:
+def extract_from_pdf(pdf_path: Path, use_typesafe: bool = False) -> tuple:
     """Extract metadata and summary from a PDF file.
 
     Reads the PDF, cleans the text, and calls LLMs to extract title, authors,
@@ -98,13 +118,15 @@ def extract_from_pdf(pdf_path: Path) -> tuple:
 
     :param pdf_path: Path to the PDF file
     :type pdf_path: Path
+    :param use_typesafe: Select title and date with TypeSafe instead of the LLM
+    :type use_typesafe: bool
     :return: Tuple of (title_dict, authors_dict, date_dict or None, summary_dict)
     :rtype: tuple
     """
     logging.info(f"Extracting from pdf {pdf_path}...")
     pdf_text: list[str] = []
     reader = PdfReader(str(pdf_path))
-    extractor = OllamaExtractors()
+    extractor = OpenRouterExtractors()
 
     page_text = _extract_page_text(reader.pages[0], extractor)
     pdf_text.extend(clean_text(page_text))
@@ -124,5 +146,6 @@ def extract_from_pdf(pdf_path: Path) -> tuple:
 
     cont_pdf_text = "\n".join(pdf_text)[:MAX_SUMMARY_CHARS]
     summary = extractor.summarize_text(cont_pdf_text)
-    title, authors, date = likely_title(pdf_text, extractor)
+    selector = TypeSafeSelectors() if use_typesafe else None
+    title, authors, date = likely_title(pdf_text, extractor, selector)
     return title, authors, date, summary

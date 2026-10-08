@@ -11,10 +11,11 @@ dependencies = [
     "pypdf (>=6.6.2,<7.0.0)",
     "cryptography (>=46.0.3,<47.0.0)",
     "dateparser (>=1.2.2,<2.0.0)",
-    "ollama (>=0.6.1,<0.7.0)",
     "tqdm (>=4.67.1,<5.0.0)",
     "pydantic (>=2.12.5,<3.0.0)",
-    "pillow (>=12.2.0,<13.0.0)"
+    "pillow (>=12.2.0,<13.0.0)",
+    "typesafe-sdk (>=0.7.2,<0.8.0)",
+    "openai (>=3.26.0,<4.0.0)"
 ]
 
 
@@ -31,5 +32,5 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = [
-    "integration: tests that require a live Ollama instance and sample PDF files",
+    "integration: tests that require an OpenRouter API key and sample PDF files",
 ]

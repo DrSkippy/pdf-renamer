@@ -6,7 +6,7 @@ This project has two separate test suites:
 
 1. **test_extractors.py** - Tests for `llms/extractors.py`
    - 16 tests with 100% code coverage
-   - Tests the OllamaExtractors class and JSON parsing
+   - Tests the OpenRouterExtractors class and JSON parsing
 
 2. **test_pdf_content.py** - Tests for `utils/pdf_content.py`  
    - 23 tests with 88% code coverage

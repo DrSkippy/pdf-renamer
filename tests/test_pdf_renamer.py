@@ -42,7 +42,7 @@ class TestRunDryRun:
         """run_dry_run skips a file that raises an exception and processes the rest."""
         plan_file = tmp_path / "plan.json"
 
-        def fake_extract(path):
+        def fake_extract(path, use_typesafe=False):
             if path.name == "bad.pdf":
                 raise Exception("failed to create seqence")
             return GOOD_RESULT
@@ -87,7 +87,7 @@ class TestRunDryRun:
 class TestRunFull:
     def test_continues_after_exception(self, pdf_root, capsys):
         """run_full skips a file that raises an exception and renames the rest."""
-        def fake_extract(path):
+        def fake_extract(path, use_typesafe=False):
             if path.name == "bad.pdf":
                 raise Exception("failed to create seqence")
             return GOOD_RESULT

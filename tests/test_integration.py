@@ -1,6 +1,6 @@
 """Integration tests for end-to-end title extraction against sample PDFs.
 
-These tests require a live Ollama instance at the configured host and the
+These tests require OPENROUTER_API_KEY (see .envrc.example) and the
 sample PDFs in the samples/ directory. Run with:
 
     poetry run pytest -m integration tests/test_integration.py -v

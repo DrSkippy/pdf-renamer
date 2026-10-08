@@ -93,7 +93,7 @@ class TestLikelyTitle:
     """Test suite for likely_title function"""
 
     def _make_extractor(self, title="Test Title", authors="Author A", authors_list=None):
-        """Return a mock OllamaExtractors instance."""
+        """Return a mock OpenRouterExtractors instance."""
         mock_extractor = Mock()
         mock_extractor.llm_title.return_value = {"title": title}
         mock_extractor.llm_authors.return_value = {
@@ -262,7 +262,7 @@ class TestExtractPageText:
 class TestExtractFromPdf:
     """Test suite for extract_from_pdf function"""
 
-    @patch("utils.pdf_content.OllamaExtractors")
+    @patch("utils.pdf_content.OpenRouterExtractors")
     @patch("utils.pdf_content.PdfReader")
     def test_extract_from_pdf_single_page(self, mock_pdf_reader_class, mock_extractor_class):
         """Test successful extraction from a single-page PDF."""
@@ -288,7 +288,7 @@ class TestExtractFromPdf:
         assert authors["authors"] == "John Doe"
         assert summary["summary"] == "A summary."
 
-    @patch("utils.pdf_content.OllamaExtractors")
+    @patch("utils.pdf_content.OpenRouterExtractors")
     @patch("utils.pdf_content.PdfReader")
     def test_extract_from_pdf_ocr_fallback(self, mock_pdf_reader_class, mock_extractor_class):
         """When first page is image-based, OCR is used and results flow through normally."""
@@ -311,7 +311,7 @@ class TestExtractFromPdf:
         mock_extractor.ocr_page_images.assert_called_once()
         assert title["title"] == "OCR Title"
 
-    @patch("utils.pdf_content.OllamaExtractors")
+    @patch("utils.pdf_content.OpenRouterExtractors")
     @patch("utils.pdf_content.PdfReader")
     def test_extract_from_pdf_reads_extra_pages_when_short(
         self, mock_pdf_reader_class, mock_extractor_class
@@ -339,7 +339,7 @@ class TestExtractFromPdf:
         assert short_page.extract_text.call_count == 1
         assert long_page.extract_text.call_count == 1
 
-    @patch("utils.pdf_content.OllamaExtractors")
+    @patch("utils.pdf_content.OpenRouterExtractors")
     @patch("utils.pdf_content.PdfReader")
     def test_extract_from_pdf_respects_max_pages(self, mock_pdf_reader_class, mock_extractor_class):
         """Page reading stops at MAX_PAGES_TO_READ even if MIN_CONTENT_LINES not reached."""
@@ -360,7 +360,7 @@ class TestExtractFromPdf:
 
         assert short_page.extract_text.call_count <= MAX_PAGES_TO_READ
 
-    @patch("utils.pdf_content.OllamaExtractors")
+    @patch("utils.pdf_content.OpenRouterExtractors")
     @patch("utils.pdf_content.PdfReader")
     def test_extract_from_pdf_summary_truncated(self, mock_pdf_reader_class, mock_extractor_class):
         """Text sent to summarize_text is capped at MAX_SUMMARY_CHARS."""

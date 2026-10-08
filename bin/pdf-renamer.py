@@ -49,6 +49,15 @@ def parse_args() -> argparse.Namespace:
         help="Write a metadata JSON file per PDF to this directory (created if absent). "
              "Can be combined with the default rename mode.",
     )
+    parser.add_argument(
+        "--extractor",
+        default="llm",
+        choices=["llm", "typesafe"],
+        help="How to get the title and date: 'llm' generates them with an OpenRouter model; "
+             "'typesafe' selects them from candidate text with TypeSafe "
+             "(requires TYPESAFE_API_KEY). Authors and summary always use OpenRouter. "
+             "(default: llm)",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--dry-run",
@@ -69,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_dry_run(pdf_root: Path, plan_file: Path) -> int:
+def run_dry_run(pdf_root: Path, plan_file: Path, use_typesafe: bool = False) -> int:
     """Run LLM extraction over all PDFs, print proposed renames, and save the plan."""
     logging.info(f"Dry run — reading PDFs from {pdf_root}")
     plan: list[dict] = []
@@ -78,14 +87,16 @@ def run_dry_run(pdf_root: Path, plan_file: Path) -> int:
     for filename in tqdm.tqdm(pdfs):
         try:
             logging.info(f"Processing {filename}")
-            title, authors, date, summary = extract_from_pdf(filename)
+            title, authors, date, summary = extract_from_pdf(filename, use_typesafe)
             if not title["title"]:
                 logging.info("Falling back to file title.")
                 title["title"] = make_filename_safe(filename.stem)
             clean_stem = make_filename_safe(title["title"])
             destination = filename.parent / (clean_stem + ".pdf")
 
-            print(f"{filename.name}  →  {destination.name}")
+            confidence = title.get("confidence")
+            note = f"  [{title.get('source')} {confidence:.2f}]" if confidence is not None else ""
+            print(f"{filename.name}  →  {destination.name}{note}")
             plan.append({
                 "source": str(filename),
                 "destination": str(destination),
@@ -141,12 +152,15 @@ def run_apply(plan_file: Path) -> None:
     print(f"\nDone — {renamed} renamed, {skipped} skipped")
 
 
-def run_full(pdf_root: Path, output_dir: Path | None = None) -> tuple[int, int]:
+def run_full(
+    pdf_root: Path, output_dir: Path | None = None, use_typesafe: bool = False
+) -> tuple[int, int]:
     """Run LLM extraction and rename each PDF in place.
 
     :param pdf_root: Directory containing PDF files to process.
     :param output_dir: Optional directory to write one metadata JSON file per PDF.
                        Created automatically if it does not exist.
+    :param use_typesafe: Select title and date with TypeSafe instead of the LLM.
     """
     logging.info(f"Reading PDFs from {pdf_root}")
     if output_dir:
@@ -156,7 +170,7 @@ def run_full(pdf_root: Path, output_dir: Path | None = None) -> tuple[int, int]:
     for filename in tqdm.tqdm(list(pdf_root.glob("*.pdf"))):
         try:
             logging.info(f"Processing {filename}")
-            title, authors, date, summary = extract_from_pdf(filename)
+            title, authors, date, summary = extract_from_pdf(filename, use_typesafe)
             if not title["title"]:
                 logging.info("Falling back to file title.")
                 title["title"] = make_filename_safe(filename.stem)
@@ -207,7 +221,7 @@ if __name__ == "__main__":
     if args.apply:
         run_apply(Path(args.plan_file))
     elif args.dry_run:
-        run_dry_run(Path(args.pdf_root), Path(args.plan_file))
+        run_dry_run(Path(args.pdf_root), Path(args.plan_file), args.extractor == "typesafe")
     else:
         output_dir = Path(args.json) if args.json else None
-        run_full(Path(args.pdf_root), output_dir)
+        run_full(Path(args.pdf_root), output_dir, args.extractor == "typesafe")
