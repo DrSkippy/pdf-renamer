@@ -7,8 +7,9 @@ def make_filename_safe(filename):
     """
     Sanitizes a filename by removing or replacing invalid characters to ensure
     filesystem compatibility. The function performs multiple transformations:
-    applies NFKC normalization (so ligatures such as "ﬁ" become "fi"), turns
-    Unicode dashes into hyphens, converts whitespace sequences to single underscores, removes non-ASCII
+    applies NFKD normalization and drops combining marks (so ligatures such as
+    "ﬁ" become "fi" and "Dürer" becomes "Durer"), turns Unicode dashes into
+    hyphens, converts whitespace sequences to single underscores, removes non-ASCII
     alphanumeric characters (except underscores, dots, and hyphens), consolidates
     multiple consecutive underscores into one, and strips leading/trailing
     underscores from the result.
@@ -19,8 +20,9 @@ def make_filename_safe(filename):
     :rtype: str
     """
     logging.debug(f"Making filename safe: {filename}")
-    # Decompose compatibility characters (ligatures, full-width forms) to ASCII equivalents
-    filename = unicodedata.normalize("NFKC", filename)
+    # Decompose ligatures, full-width forms, and accented letters, then drop the accents
+    filename = unicodedata.normalize("NFKD", filename)
+    filename = "".join(c for c in filename if not unicodedata.combining(c))
     # Keep word breaks from en/em dashes and similar instead of deleting them
     filename = re.sub(r"[\u2010-\u2015\u2212]", "-", filename)
     # Replace all spaces with a single underscore first

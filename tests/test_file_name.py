@@ -17,9 +17,13 @@ class TestMakeFilenameSafe:
         assert make_filename_safe("Outcomes—Past, Present") == "Outcomes-Past_Present"
         assert make_filename_safe("pages 1–5") == "pages_1-5"
 
-    def test_accents_without_ascii_equivalent_are_removed(self):
-        # NFKC keeps precomposed accents, which the ASCII filter then drops
-        assert make_filename_safe("Dürer") == "Drer"
+    def test_accents_are_stripped_to_base_letters(self):
+        assert make_filename_safe("Dürer") == "Durer"
+        assert make_filename_safe("Erdős and Gödel naïve") == "Erdos_and_Godel_naive"
+
+    def test_letters_without_ascii_base_are_removed(self):
+        # No decomposition exists for these, so the ASCII filter still drops them
+        assert make_filename_safe("Østergaard ß") == "stergaard"
 
     def test_collapses_and_strips_underscores(self):
         assert make_filename_safe("  __a   b__  ") == "a_b"
